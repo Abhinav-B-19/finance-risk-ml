@@ -4,3 +4,19 @@ __pycache__/
 data/
 model/*.pkl
 .env
+
+# models
+models/*
+!models/features.pkl
+!models/label_encoder_shock.pkl
+!models/label_encoder_user_type.pkl
+
+# data
+data/
+
+# python
+__pycache__/
+*.pyc
+
+# env
+venv/
