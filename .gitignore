@@ -6,10 +6,19 @@ model/*.pkl
 .env
 
 # models
+# models
 models/*
 !models/features.pkl
 !models/label_encoder_shock.pkl
 !models/label_encoder_user_type.pkl
+
+!models/xgb_distress_t1_v1.pkl
+!models/xgb_distress_t2_v1.pkl
+!models/xgb_distress_t3_v1.pkl
+
+!models/threshold_distress_t1_v1.pkl
+!models/threshold_distress_t2_v1.pkl
+!models/threshold_distress_t3_v1.pkl
 
 # data
 data/
