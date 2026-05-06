@@ -30,13 +30,25 @@ CATEGORICAL_FALLBACKS = {
 # ─────────────────────────────────────────
 def _load_artifacts():
     features = joblib.load(MODEL_DIR / "features.pkl")
-    model = joblib.load(MODEL_DIR / "xgb_distress_t2_v1.pkl")
-    threshold = joblib.load(MODEL_DIR / "threshold_distress_t2_v1.pkl")
+
+    models = {
+        "month_1": joblib.load(MODEL_DIR / "xgb_distress_t1_v1.pkl"),
+        "month_2": joblib.load(MODEL_DIR / "xgb_distress_t2_v1.pkl"),
+        "month_3": joblib.load(MODEL_DIR / "xgb_distress_t3_v1.pkl"),
+    }
+
+    thresholds = {
+        "month_1": joblib.load(MODEL_DIR / "threshold_distress_t1_v1.pkl"),
+        "month_2": joblib.load(MODEL_DIR / "threshold_distress_t2_v1.pkl"),
+        "month_3": joblib.load(MODEL_DIR / "threshold_distress_t3_v1.pkl"),
+    }
+
     le_shock = joblib.load(MODEL_DIR / "label_encoder_shock.pkl")
-    return features, model, threshold, le_shock
+
+    return features, models, thresholds, le_shock
 
 
-_FEATURES, _MODEL, _THRESHOLD, _LE_SHOCK = _load_artifacts()
+_FEATURES, _MODELS, _THRESHOLDS, _LE_SHOCK = _load_artifacts()
 
 # ─────────────────────────────────────────
 # SAFE ENCODE
@@ -134,6 +146,23 @@ def _apply_risk_override(data, risk_score):
 
     return risk_score
 
+def _build_prediction_result(proba, threshold):
+    risk_score = round(proba * 100, 2)
+
+    risk_score = max(0, min(risk_score, 100))
+
+    risk_level = (
+        "LOW" if risk_score < 30 else
+        "MEDIUM" if risk_score < 60 else
+        "HIGH"
+    )
+
+    return {
+        "probability": round(proba, 4),
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "alert": int(proba >= threshold),
+    }
 
 # ─────────────────────────────────────────
 # PREDICT
@@ -143,35 +172,53 @@ def predict(input_data, explain=False):
     try:
         _validate(input_data)
     except Exception as e:
-        return {"status": "error", "errors": [str(e)]}
+        return {
+            "status": "error",
+            "errors": [str(e)]
+        }
 
     try:
         X = _preprocess(input_data)
 
-        proba = float(_MODEL.predict_proba(X)[0][1])
-        risk_score = round(proba * 100, 2)
+        predictions = {}
 
-        # 🔥 APPLY HYBRID LOGIC
-        risk_score = _apply_risk_override(input_data, risk_score)
+        for horizon, model in _MODELS.items():
 
-        risk_level = (
-            "LOW" if risk_score < 30 else
-            "MEDIUM" if risk_score < 60 else
-            "HIGH"
-        )
+            threshold = _THRESHOLDS[horizon]
 
-        result = {
+            proba = float(model.predict_proba(X)[0][1])
+
+            risk_score = round(proba * 100, 2)
+
+            # Hybrid override
+            risk_score = _apply_risk_override(
+                input_data,
+                risk_score
+            )
+
+            adjusted_proba = risk_score / 100
+
+            predictions[horizon] = {
+                "probability": round(adjusted_proba, 4),
+                "risk_score": risk_score,
+                "risk_level": (
+                    "LOW" if risk_score < 30 else
+                    "MEDIUM" if risk_score < 60 else
+                    "HIGH"
+                ),
+                "alert": int(risk_score >= 60)
+            }
+
+        return {
             "status": "success",
-            "probability": round(proba, 4),
-            "risk_score": risk_score,
-            "risk_level": risk_level,
-            "alert": int(risk_score >= 60),
+            "predictions": predictions
         }
 
-        return result
-
     except Exception as e:
-        return {"status": "error", "errors": [str(e)]}
+        return {
+            "status": "error",
+            "errors": [str(e)]
+        }
 
 
 def predict_batch(inputs):
